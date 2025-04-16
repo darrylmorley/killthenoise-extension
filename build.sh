@@ -15,6 +15,7 @@ EXCLUDES=(
   "build.sh"
   "killthenoise.zip"
   "icon2.png"
+  ".DS_Store"
 )
 
 # Create the exclude args for zip
