@@ -4,6 +4,8 @@
 
 ## A Chrome Extension to Filter YouTube Rage-Bait and Clickbait
 
+> Block rage-bait and clickbait videos on YouTube for a calmer browsing experience.
+
 KillTheNoise is a powerful Chrome extension that filters out rage-bait, clickbait, and melodramatic videos from your YouTube feed, giving you a calmer and more meaningful browsing experience.
 
 ## Features
@@ -58,8 +60,8 @@ The extension comes with a set of default keywords designed to target common cli
 - falling apart
 - collapse
 - shocking
-- gone wrong
-- and many more...
+- gone wrong  
+  _See the full list in the extension settings or [defaultKeywords.js](./defaultKeywords.js)._
 
 ## Performance
 
@@ -89,4 +91,4 @@ KillTheNoise respects your privacy:
 
 ---
 
-Made with ❤️ to bring calm to your YouTube experience
+Made with ❤️ by real humans — for calmer, less chaotic YouTube vibes.
