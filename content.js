@@ -391,7 +391,10 @@ function getVideoId(el) {
 // Parse title and description from an element
 function parseVideoData(el) {
   // Get title text
-  const titleEl = el.querySelector("#video-title") || el.querySelector("h3");
+  const titleEl =
+    el.querySelector("#video-title") ||
+    el.querySelector("h3 yt-formatted-string#video-title") ||
+    el.querySelector("h3");
   if (!titleEl) return null;
 
   const titleText = titleEl.textContent.trim();
@@ -401,6 +404,32 @@ function parseVideoData(el) {
     "#description-text, .metadata-snippet-text, yt-formatted-string.metadata-snippet-text"
   );
   const descriptionText = descriptionEl ? descriptionEl.textContent.trim() : "";
+
+  // Get channel name
+  const channelNameEl =
+    el.querySelector("ytd-channel-name yt-formatted-string#text a") ||
+    el.querySelector("#channel-name yt-formatted-string");
+  const channelName = channelNameEl ? channelNameEl.textContent.trim() : "";
+
+  // Get view count
+  const viewCountEl = el.querySelector(
+    "#metadata-line span.inline-metadata-item:first-child"
+  );
+  const viewCountText = viewCountEl ? viewCountEl.textContent.trim() : "";
+
+  // Get publish time
+  const publishTimeEl = el.querySelector(
+    "#metadata-line span.inline-metadata-item:nth-child(2)"
+  );
+  const publishTimeText = publishTimeEl ? publishTimeEl.textContent.trim() : "";
+
+  // Get video duration
+  const durationEl =
+    el.querySelector("ytd-thumbnail-overlay-time-status-renderer span#text") ||
+    el.querySelector(
+      "ytd-thumbnail-overlay-time-status-renderer .badge-shape-wiz__text"
+    );
+  const duration = durationEl ? durationEl.textContent.trim() : "";
 
   // Extract hashtags from title and description
   const hashtags = [];
@@ -438,9 +467,34 @@ function parseVideoData(el) {
     });
   }
 
+  // Extract video ID from href attribute
+  let videoId = "";
+  const thumbnailLink = el.querySelector("a#thumbnail");
+  if (thumbnailLink && thumbnailLink.href) {
+    const match = thumbnailLink.href.match(/(?:v=|\/)([\w-]{11})(?:\?|&|\/|$)/);
+    if (match) videoId = match[1];
+  }
+
+  // Look for badges like "New" or "Live"
+  const badges = [];
+  const badgeElements = el.querySelectorAll(
+    "ytd-badge-supported-renderer #badge"
+  );
+  badgeElements.forEach((badge) => {
+    if (badge.textContent) {
+      badges.push(badge.textContent.trim());
+    }
+  });
+
   return {
     titleText,
     descriptionText,
+    channelName,
+    viewCountText,
+    publishTimeText,
+    duration,
+    videoId,
+    badges,
     hashtags,
   };
 }
