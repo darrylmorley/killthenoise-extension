@@ -53,7 +53,11 @@ const DEFAULT_KEYWORDS = [
 
 // Debug helper
 function debugLog(...args) {
-  console.log("[KillTheNoise Background]", ...args);
+  chrome.storage.sync.get(["debugMode"], (result) => {
+    if (result.debugMode === true) {
+      console.log("[KillTheNoise Background]", ...args);
+    }
+  });
 }
 
 // Initialize settings on install or update
@@ -82,6 +86,11 @@ chrome.runtime.onInstalled.addListener((details) => {
     // Initialize filteredCount if undefined
     if (typeof result.filteredCount === "undefined") {
       toSet.filteredCount = 0;
+    }
+
+    // Initialize debugMode if undefined (default to false)
+    if (typeof result.debugMode === "undefined") {
+      toSet.debugMode = false;
     }
 
     // Apply updates if needed

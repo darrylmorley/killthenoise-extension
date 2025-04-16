@@ -66,6 +66,41 @@
         color: green;
         text-align: center;
       }
+
+      .advanced-settings {
+        margin-top: 2em;
+        padding-top: 1em;
+        border-top: 1px solid #eee;
+      }
+
+      .advanced-settings h2 {
+        font-size: 1.2em;
+        margin-top: 0;
+      }
+
+      .switch {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1em;
+      }
+
+      .switch label {
+        font-weight: normal;
+        margin-bottom: 0;
+      }
+
+      input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+      }
+
+      .switch-description {
+        font-size: 0.85em;
+        color: #666;
+        margin-top: 0.25em;
+        margin-bottom: 1em;
+      }
     </style>
   </head>
   <body>
@@ -79,6 +114,20 @@
       <textarea id="keywords"></textarea>
       <button id="save">Save</button>
       <div id="status"></div>
+
+      <!-- Advanced Settings Section -->
+      <div class="advanced-settings">
+        <h2>Advanced Settings</h2>
+
+        <div class="switch">
+          <label for="debugToggle">Debug Mode</label>
+          <input type="checkbox" id="debugToggle" />
+        </div>
+        <p class="switch-description">
+          When enabled, detailed logs will be shown in the browser console. This
+          is useful for troubleshooting issues.
+        </p>
+      </div>
     </div>
     <script src="options.js"></script>
   </body>

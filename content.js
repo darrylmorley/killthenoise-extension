@@ -59,7 +59,11 @@ let localRemovedCount = 0;
 
 // Debug helper
 function debugLog(...args) {
-  console.log("[KillTheNoise]", ...args);
+  chrome.storage.sync.get(["debugMode"], (result) => {
+    if (result.debugMode === true) {
+      console.log("[KillTheNoise]", ...args);
+    }
+  });
 }
 
 // Create and cache regex patterns for keywords to avoid repeated creation

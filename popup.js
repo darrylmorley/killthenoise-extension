@@ -4,19 +4,15 @@
 const toggle = document.getElementById("enabledToggle");
 const countDisplay = document.getElementById("count");
 const resetBtn = document.getElementById("resetCounter");
-const debugInfo = document.getElementById("debugInfo");
 
 // Debug helper function
 function logDebug(message, data = null) {
-  console.log(message, data);
-
-  // Add to debug div in popup
-  const timestamp = new Date().toLocaleTimeString();
-  const logMessage = data
-    ? `${timestamp}: ${message} ${JSON.stringify(data)}`
-    : `${timestamp}: ${message}`;
-
-  debugInfo.innerHTML += `${logMessage}<br>`;
+  chrome.storage.sync.get(["debugMode"], (result) => {
+    // Only log if debug mode is enabled
+    if (result.debugMode === true) {
+      console.log(message, data);
+    }
+  });
 }
 
 // Function to update UI with current values
@@ -24,12 +20,9 @@ function updateUI() {
   chrome.storage.sync.get(["filterEnabled", "filteredCount"], (result) => {
     logDebug("Storage values retrieved:", result);
 
-    // Update toggle state - explicitly check if it's false
+    // Update filter toggle state
     const isEnabled = result.filterEnabled !== false;
     toggle.checked = isEnabled;
-    logDebug(
-      `Setting toggle to: ${isEnabled} (storage value: ${result.filterEnabled})`
-    );
 
     // Update counter display
     const count = result.filteredCount || 0;
@@ -39,8 +32,6 @@ function updateUI() {
 
 // Initialize popup
 document.addEventListener("DOMContentLoaded", () => {
-  logDebug("Popup opened");
-
   // Force refresh settings from storage
   chrome.storage.sync.get(null, (allData) => {
     logDebug("All storage data:", allData);
@@ -50,26 +41,18 @@ document.addEventListener("DOMContentLoaded", () => {
   updateUI();
 });
 
-// Add listener for toggle changes
+// Add listener for filter toggle changes
 toggle.addEventListener("change", () => {
   const enabled = toggle.checked;
-  logDebug("Toggle changed to:", enabled);
+  logDebug("Filter toggle changed to:", enabled);
 
   // Immediately update UI to reflect the change
   toggle.disabled = true; // Disable during update
 
-  // Make sure we're setting a boolean value, not undefined or null
+  // Make sure we're setting a boolean value
   chrome.storage.sync.set({ filterEnabled: enabled === true }, () => {
     toggle.disabled = false; // Re-enable after update
     logDebug("Storage updated. filterEnabled set to:", enabled);
-
-    // Verify the storage was updated correctly
-    chrome.storage.sync.get(["filterEnabled"], (result) => {
-      logDebug(
-        "Verification - filterEnabled in storage is now:",
-        result.filterEnabled
-      );
-    });
 
     // Notify content script to reapply filter immediately
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
