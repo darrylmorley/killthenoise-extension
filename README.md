@@ -20,6 +20,17 @@ KillTheNoise is a powerful Chrome extension that filters out rage-bait, clickbai
 
 ## Installation
 
+### Option 1: Download the Release ZIP
+
+1. Go to the [Releases](https://github.com/your-username/killthenoise-extension/releases) section
+2. Download the latest `.zip` file
+3. Open Chrome and go to `chrome://extensions/`
+4. Enable "Developer mode" in the top right corner
+5. Drag the downloaded `.zip` file directly onto the extensions screen
+6. KillTheNoise is now installed and ready to use!
+
+### Option 2: Load from Source
+
 1. Download or clone this repository
 2. Open Chrome and go to `chrome://extensions/`
 3. Enable "Developer mode" in the top right corner
