@@ -1,32 +1,84 @@
 // Web Worker for KillTheNoise filtering operations
-// This worker handles the CPU-intensive filtering tasks to avoid blocking the main thread
+// With improved keyword matching specifically for political terms and quoted content
 
 let processedVideos = new Set();
 let localRemovedCount = 0;
 let regexCache = new Map();
 let debugMode = false;
 
-// Debug helper - always sends back debug info during troubleshooting
+// Debug helper
 function debugLog(...args) {
-  // Create message string
-  const message = args
-    .map((arg) => {
-      if (typeof arg === "object") {
-        try {
-          return JSON.stringify(arg);
-        } catch (e) {
-          return "[Object]";
-        }
-      }
-      return String(arg);
-    })
-    .join(" ");
+  if (debugMode) {
+    self.postMessage({
+      type: "debug",
+      data: {
+        message: args.join(" "),
+      },
+    });
+  }
+}
 
-  // Send debug message back to main thread
-  self.postMessage({
-    type: "debug",
-    data: { message },
-  });
+// Improved helper for keyword matching that better handles political names and quoted text
+function matchesKeyword(text, keyword) {
+  if (!text || !keyword) return false;
+
+  const lowerText = text.toLowerCase();
+  const lowerKeyword = keyword.toLowerCase().trim();
+
+  // Simple direct match
+  if (lowerText === lowerKeyword) return true;
+
+  // Check if the keyword appears exactly at the start of the text
+  if (lowerText.startsWith(lowerKeyword + " ")) return true;
+
+  try {
+    const escapedKeyword = lowerKeyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    // Word boundary check
+    const wordRegex = new RegExp(`\\b${escapedKeyword}\\b`, "i");
+    if (wordRegex.test(lowerText)) return true;
+
+    // Handle cases where punctuation might break word boundaries
+    const punctRegex = new RegExp(
+      `[\\s,.;:'"\`\\-()]${escapedKeyword}[\\s,.;:'"\`\\-()]|^${escapedKeyword}[\\s,.;:'"\`\\-()]|[\\s,.;:'"\`\\-()]${escapedKeyword}$|^${escapedKeyword}$`,
+      "i"
+    );
+    if (punctRegex.test(lowerText)) return true;
+
+    // Special handling for political names and controversial terms
+    const politicalNames = ["trump", "biden", "vance", "zelensky", "putin"];
+    const controversialTerms = [
+      "scandal",
+      "disaster",
+      "crisis",
+      "controversial",
+    ];
+
+    if (
+      politicalNames.includes(lowerKeyword) ||
+      controversialTerms.includes(lowerKeyword)
+    ) {
+      // Match variants like T*rump, T'rump, T-rump, T.rump
+      const specialRegex = new RegExp(
+        `\\b${lowerKeyword.charAt(0)}[.*'\`"\\-_]?${lowerKeyword.substring(
+          1
+        )}\\b`,
+        "i"
+      );
+      if (specialRegex.test(lowerText)) return true;
+
+      // Check for the name surrounded by quotes or other characters
+      const quotedRegex = new RegExp(`['"\`]${escapedKeyword}['"\`]`, "i");
+      if (quotedRegex.test(lowerText)) return true;
+    }
+  } catch (e) {
+    debugLog(`Regex error for keyword "${keyword}":`, e.toString());
+    // Fall back to basic inclusion check if regex fails
+    return lowerText.includes(lowerKeyword);
+  }
+
+  // Simple substring check as fallback
+  return lowerText.includes(lowerKeyword);
 }
 
 // Helper to create regex patterns for a keyword
@@ -70,6 +122,10 @@ function createKeywordRegexes(keyword) {
           .join("[\\s\\u200B\\u200C\\u200D\\uFEFF]*")}\\b`,
         "i"
       ),
+      // For political figures match at beginning of sentence/title
+      startOfText: new RegExp(`^${escapedKeyword}[\\s,.;:"'\\-]`, "i"),
+      // Match with quotes around keyword
+      quoted: new RegExp(`["'\\-()[]{}]${escapedKeyword}["'\\-()[]{}]`, "i"),
     };
   } catch (e) {
     debugLog(`Error creating regex for "${keyword}":`, e.toString());
@@ -86,32 +142,68 @@ function getKeywordRegexes(keyword) {
   return regexCache.get(lowerKeyword);
 }
 
+// Enhanced title matching with improved handling for political content
+function titleMatchesKeyword(title, keyword) {
+  if (!title || !keyword) return false;
+
+  // Use our improved general matching function first
+  if (matchesKeyword(title, keyword)) return true;
+
+  // If that fails, try the more specific regex patterns
+  const lowerTitle = title.toLowerCase();
+  const lowerKeyword = keyword.toLowerCase().trim();
+  const regexes = getKeywordRegexes(lowerKeyword);
+
+  if (!regexes) return lowerTitle.includes(lowerKeyword);
+
+  // Political figures need special handling
+  const isPoliticalFigure = [
+    "trump",
+    "biden",
+    "vance",
+    "zelensky",
+    "putin",
+  ].includes(lowerKeyword);
+  const isControversialTerm = [
+    "scandal",
+    "disaster",
+    "crisis",
+    "controversial",
+    "abandons",
+    "blames",
+  ].includes(lowerKeyword);
+
+  // Check with all the regex patterns
+  if (regexes.word.test(lowerTitle)) return true;
+  if (regexes.possessiveS.test(lowerTitle)) return true;
+  if (regexes.plural.test(lowerTitle)) return true;
+  if (regexes.possessive.test(lowerTitle)) return true;
+  if (regexes.relaxed.test(lowerTitle)) return true;
+  if (regexes.enhanced.test(lowerTitle)) return true;
+  if (regexes.htmlEmbedded.test(lowerTitle)) return true;
+  if (regexes.obfuscated.test(lowerTitle)) return true;
+  if (regexes.hidden.test(lowerTitle)) return true;
+  if (regexes.quoted.test(lowerTitle)) return true;
+
+  // For political figures, also check if they are at the start of the title
+  if (isPoliticalFigure && regexes.startOfText.test(lowerTitle)) return true;
+
+  // For political figures, be more liberal with matching
+  if (isPoliticalFigure || isControversialTerm) {
+    return lowerTitle.includes(lowerKeyword);
+  }
+
+  return false;
+}
+
 // Process a batch of videos against keywords and hashtags
 function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
-  debugLog(`Starting to process ${videos.length} videos in worker`);
-
-  if (blockKeywords.length > 0) {
-    debugLog(
-      `Using keywords: ${blockKeywords.slice(0, 5).join(", ")}${
-        blockKeywords.length > 5 ? "..." : ""
-      }`
-    );
-  }
-
-  if (blockHashtags && blockHashtags.length > 0) {
-    debugLog(`Using hashtags: ${blockHashtags.join(", ")}`);
-  }
+  debugLog(
+    `Processing ${videos.length} videos with ${blockKeywords.length} keywords`
+  );
 
   const results = [];
   let removedThisRun = 0;
-
-  // Debug: log first video for verification
-  if (videos.length > 0) {
-    const firstVideo = videos[0];
-    debugLog(
-      `First video in batch: "${firstVideo.titleText}" (ID: ${firstVideo.videoId})`
-    );
-  }
 
   for (const video of videos) {
     const {
@@ -123,16 +215,8 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
       channelName = "",
     } = video;
 
-    // Skip invalid videos
-    if (!videoId || !titleText) {
-      debugLog(`Skipping invalid video: missing ID or title`);
-      continue;
-    }
-
     // Skip if we've already processed this video
-    if (processedVideos.has(videoId)) {
-      continue;
-    }
+    if (processedVideos.has(videoId)) continue;
 
     // Mark as processed
     processedVideos.add(videoId);
@@ -173,9 +257,6 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
           result.matchType = "hashtag match";
           localRemovedCount++;
           removedThisRun++;
-          debugLog(
-            `Filtered video by hashtag: "${titleText}" (hashtag match: ${blockHashtag})`
-          );
           break;
         }
       }
@@ -198,9 +279,6 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
             result.matchType = "badge match";
             localRemovedCount++;
             removedThisRun++;
-            debugLog(
-              `Filtered video by badge: "${titleText}" (badge match: ${keyword})`
-            );
             break;
           }
         }
@@ -226,9 +304,6 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
           result.matchType = "channel match";
           localRemovedCount++;
           removedThisRun++;
-          debugLog(
-            `Filtered video by channel: "${titleText}" (channel match: ${keyword})`
-          );
           break;
         }
       }
@@ -236,119 +311,64 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
 
     // If not filtered by hashtag, badge, or channel name, check title and description keywords
     if (!result.filtered) {
-      const lowerTitle = titleText.toLowerCase();
-      const lowerDesc = descriptionText ? descriptionText.toLowerCase() : "";
+      // Special check for political content and other sensitive topics
+      const isPoliticalContent = titleText
+        .toLowerCase()
+        .match(/\b(trump|biden|vance|zelensky|putin)\b/i);
+      const isControversialContent = titleText
+        .toLowerCase()
+        .match(/\b(scandal|war|conflict|disaster|crisis|controversy)\b/i);
+
+      // Log potentially problematic political content for debugging
+      if (isPoliticalContent) {
+        debugLog(`Political content detected: "${titleText}"`);
+      }
 
       for (const keyword of blockKeywords) {
-        const lowerKeyword = keyword.toLowerCase().trim();
-        let matched = false;
-        let matchType = "";
-
-        // For single words, use cached regex patterns
-        if (lowerKeyword.indexOf(" ") === -1) {
-          const regexes = getKeywordRegexes(lowerKeyword);
-
-          if (regexes) {
-            // First try strict word boundary matches in title
-            if (
-              regexes.word.test(lowerTitle) ||
-              regexes.possessiveS.test(lowerTitle) ||
-              regexes.plural.test(lowerTitle) ||
-              regexes.possessive.test(lowerTitle)
-            ) {
-              matched = true;
-              matchType = "title word match";
-            }
-            // Then try relaxed matches in title
-            else if (
-              regexes.relaxed.test(lowerTitle) ||
-              regexes.anywhere.test(lowerTitle)
-            ) {
-              matched = true;
-              matchType = "title relaxed match";
-            }
-            // Check description with regexes if available
-            else if (
-              lowerDesc &&
-              (regexes.word.test(lowerDesc) ||
-                regexes.possessiveS.test(lowerDesc) ||
-                regexes.plural.test(lowerDesc) ||
-                regexes.possessive.test(lowerDesc))
-            ) {
-              matched = true;
-              matchType = "description word match";
-            }
-            // Try relaxed description matches
-            else if (
-              lowerDesc &&
-              (regexes.relaxed.test(lowerDesc) ||
-                regexes.anywhere.test(lowerDesc))
-            ) {
-              matched = true;
-              matchType = "description relaxed match";
-            }
-            // Check enhanced political name matching
-            else if (
-              regexes.enhanced.test(lowerTitle) ||
-              (lowerDesc && regexes.enhanced.test(lowerDesc))
-            ) {
-              matched = true;
-              matchType = "enhanced political name match";
-            }
-            // Check HTML embedded matches
-            else if (
-              regexes.htmlEmbedded.test(lowerTitle) ||
-              (lowerDesc && regexes.htmlEmbedded.test(lowerDesc))
-            ) {
-              matched = true;
-              matchType = "HTML embedded match";
-            }
-            // Check obfuscated matches
-            else if (
-              regexes.obfuscated.test(lowerTitle) ||
-              (lowerDesc && regexes.obfuscated.test(lowerDesc))
-            ) {
-              matched = true;
-              matchType = "obfuscated match";
-            }
-            // Check hidden matches
-            else if (
-              regexes.hidden.test(lowerTitle) ||
-              (lowerDesc && regexes.hidden.test(lowerDesc))
-            ) {
-              matched = true;
-              matchType = "hidden match";
-            }
-          } else {
-            // Fall back to simple inclusion if regex creation failed
-            if (lowerTitle.includes(lowerKeyword)) {
-              matched = true;
-              matchType = "title simple match";
-            } else if (lowerDesc && lowerDesc.includes(lowerKeyword)) {
-              matched = true;
-              matchType = "description simple match";
-            }
-          }
-        }
-        // For phrases, use simple inclusion
-        else {
-          if (lowerTitle.includes(lowerKeyword)) {
-            matched = true;
-            matchType = "title phrase match";
-          } else if (lowerDesc && lowerDesc.includes(lowerKeyword)) {
-            matched = true;
-            matchType = "description phrase match";
-          }
-        }
-
-        if (matched) {
+        // Use our enhanced title matching for better accuracy
+        if (titleMatchesKeyword(titleText, keyword)) {
           result.filtered = true;
           result.keyword = keyword;
-          result.matchType = matchType;
+          result.matchType = "title match";
           localRemovedCount++;
           removedThisRun++;
-          debugLog(`Filtered video: "${titleText}" (${matchType}: ${keyword})`);
+          debugLog(
+            `Filtered by title: "${titleText}" matched keyword "${keyword}"`
+          );
           break;
+        }
+
+        // Check description
+        if (descriptionText && titleMatchesKeyword(descriptionText, keyword)) {
+          result.filtered = true;
+          result.keyword = keyword;
+          result.matchType = "description match";
+          localRemovedCount++;
+          removedThisRun++;
+          break;
+        }
+      }
+
+      // Special handling for political content
+      if (!result.filtered && isPoliticalContent) {
+        // Find which political figure is mentioned
+        const match = titleText
+          .toLowerCase()
+          .match(/\b(trump|biden|vance|zelensky|putin)\b/i);
+        if (
+          match &&
+          blockKeywords.some((k) => k.toLowerCase() === match[0].toLowerCase())
+        ) {
+          const politicalFigure = match[0].toLowerCase();
+          debugLog(
+            `Political match: "${titleText}" contains "${politicalFigure}"`
+          );
+
+          result.filtered = true;
+          result.keyword = politicalFigure;
+          result.matchType = "political match";
+          localRemovedCount++;
+          removedThisRun++;
         }
       }
     }
@@ -356,24 +376,7 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
     results.push(result);
   }
 
-  debugLog(
-    `Worker processed ${videos.length} videos, filtered ${removedThisRun} videos`
-  );
-
-  // Additional debugging for when no videos are filtered
-  if (removedThisRun === 0 && videos.length > 0) {
-    debugLog("No videos filtered in this batch. First few titles:");
-    videos.slice(0, 3).forEach((video, i) => {
-      debugLog(`- Video ${i + 1}: "${video.titleText}"`);
-    });
-
-    if (blockKeywords.length > 0) {
-      debugLog("First few keywords:");
-      blockKeywords.slice(0, 5).forEach((keyword, i) => {
-        debugLog(`- Keyword ${i + 1}: "${keyword}"`);
-      });
-    }
-  }
+  debugLog(`Processed ${videos.length} videos, filtered ${removedThisRun}`);
 
   return {
     results,
@@ -397,138 +400,69 @@ function cleanupProcessedVideos() {
 }
 
 // Set up regular cleanup
-const cleanupInterval = setInterval(cleanupProcessedVideos, 60000); // Every minute
+setInterval(cleanupProcessedVideos, 60000); // Every minute
 
 // Listen for messages from the main thread
 self.addEventListener("message", function (e) {
-  try {
-    const { type, data } = e.data;
+  const { type, data } = e.data;
 
-    debugLog(`Worker received message type: ${type}`);
+  switch (type) {
+    case "init":
+      // Initialize worker with settings
+      debugMode = data.debugMode === true;
+      debugLog("Worker initialized with debug mode:", debugMode);
 
-    switch (type) {
-      case "init":
-        // Initialize worker with settings
-        debugMode = data.debugMode === true;
-        debugLog("Worker initialized with debug mode:", debugMode);
-        break;
+      // Test the matching function with the problematic title
+      const testTitle =
+        "Trump 'abandons' Ukrainians by blaming Zelensky for war outbreak";
+      const matched = titleMatchesKeyword(testTitle, "trump");
+      debugLog(`TEST: Title "${testTitle}" matches "trump": ${matched}`);
+      break;
 
-      case "processVideos":
-        // Process video batch
-        if (!data) {
-          debugLog("ERROR: Received processVideos message without data");
-          break;
-        }
+    case "processVideos":
+      // Process video batch
+      const { videos, keywords, hashtags } = data;
+      debugLog(
+        `Processing ${videos.length} videos against ${
+          keywords.length
+        } keywords and ${hashtags?.length || 0} hashtags`
+      );
 
-        const { videos, keywords, hashtags } = data;
+      const result = processVideoBatch(videos, keywords, hashtags || []);
 
-        if (!videos || !Array.isArray(videos)) {
-          debugLog("ERROR: videos is not an array or is missing");
-          break;
-        }
+      self.postMessage({
+        type: "processingComplete",
+        data: result,
+      });
+      break;
 
-        if (!keywords || !Array.isArray(keywords)) {
-          debugLog("ERROR: keywords is not an array or is missing");
-          break;
-        }
+    case "resetProcessedVideos":
+      // Reset processed videos
+      processedVideos.clear();
+      localRemovedCount = 0;
+      debugLog("Processed videos reset");
+      self.postMessage({
+        type: "resetComplete",
+      });
+      break;
 
-        try {
-          debugLog(
-            `Processing ${videos.length} videos against ${
-              keywords.length
-            } keywords and ${hashtags?.length || 0} hashtags`
-          );
+    case "updateDebugMode":
+      // Update debug mode
+      debugMode = data.debugMode === true;
+      debugLog("Debug mode updated:", debugMode);
+      break;
 
-          const result = processVideoBatch(videos, keywords, hashtags || []);
-
-          debugLog(
-            `Sending processing results back to main thread: ${result.removedCount} videos filtered`
-          );
-
-          self.postMessage({
-            type: "processingComplete",
-            data: result,
-          });
-        } catch (processingError) {
-          debugLog(
-            "ERROR processing videos in worker:",
-            processingError.toString()
-          );
-          // Send empty result to avoid breaking the main thread
-          self.postMessage({
-            type: "processingComplete",
-            data: {
-              results: [],
-              removedCount: 0,
-              totalRemoved: localRemovedCount,
-              error: processingError.toString(),
-            },
-          });
-        }
-        break;
-
-      case "resetProcessedVideos":
-        // Reset processed videos
-        processedVideos.clear();
-        localRemovedCount = 0;
-        debugLog("Processed videos reset");
-        self.postMessage({
-          type: "resetComplete",
-        });
-        break;
-
-      case "updateDebugMode":
-        // Update debug mode
-        debugMode = data.debugMode === true;
-        debugLog("Debug mode updated:", debugMode);
-        break;
-
-      default:
-        debugLog(`Unknown message type received: ${type}`);
-        break;
-    }
-  } catch (error) {
-    debugLog("ERROR in worker message handler:", error.toString());
-    // Send error report to main thread
-    self.postMessage({
-      type: "debug",
-      data: {
-        message: `ERROR in worker: ${error.toString()}`,
-      },
-    });
+    case "testMatching":
+      // Special case to test matching
+      const { title, keyword } = data;
+      const matchResult = titleMatchesKeyword(title, keyword);
+      debugLog(
+        `Test matching: "${title}" with "${keyword}" - Result: ${matchResult}`
+      );
+      self.postMessage({
+        type: "testMatchingResult",
+        data: { title, keyword, matches: matchResult },
+      });
+      break;
   }
-});
-
-// Self-test to ensure worker is functioning
-setTimeout(() => {
-  debugLog("Worker self-test: Processing test video");
-
-  const testVideo = {
-    videoId: "test-id-123",
-    titleText: "Test Video with EXPOSED scandal disaster",
-    descriptionText: "This is a test description",
-    hashtags: ["#test"],
-    badges: [],
-    channelName: "Test Channel",
-  };
-
-  const testKeywords = ["exposed", "disaster", "scandal"];
-
-  const result = processVideoBatch([testVideo], testKeywords, []);
-
-  if (result.removedCount > 0) {
-    debugLog("Worker self-test: Successfully filtered test video");
-  } else {
-    debugLog(
-      "Worker self-test: Failed to filter test video that should match keywords"
-    );
-  }
-}, 100);
-
-// Send initial ready message
-self.postMessage({
-  type: "debug",
-  data: {
-    message: "Worker initialized and ready to process videos",
-  },
 });
