@@ -87,6 +87,34 @@ function createKeywordRegexesMainThread(keyword) {
       possessiveS: new RegExp(`\\b${escapedKeyword}'s\\b`, "i"),
       plural: new RegExp(`\\b${escapedKeyword}s\\b`, "i"),
       possessive: new RegExp(`\\b${escapedKeyword}'\\b`, "i"),
+      // Relaxed match for any occurrence (without word boundaries)
+      anywhere: new RegExp(escapedKeyword, "i"),
+      // Match with characters on either side to catch formatting issues
+      relaxed: new RegExp(`[\\s,.;:"'\\-]${escapedKeyword}[\\s,.;:"'\\-]`, "i"),
+      // Enhanced political name matching (for cases like T.rump, T-rump, T r u m p, etc.)
+      enhanced: new RegExp(
+        `\\b${escapedKeyword.charAt(0)}[.\\s\\-_]*${escapedKeyword.substring(
+          1
+        )}\\b`,
+        "i"
+      ),
+      // Match inside HTML tags that might be rendered
+      htmlEmbedded: new RegExp(`>([^<]*?)${escapedKeyword}([^<]*?)<`, "i"),
+      // Special obfuscated version for catching deliberate misspellings (like Tr*mp, Tr_mp, etc)
+      obfuscated: new RegExp(
+        `\\b${escapedKeyword.charAt(0)}[^\\s]{0,1}${escapedKeyword.substring(
+          1,
+          escapedKeyword.length / 2
+        )}[^\\s]{0,1}${escapedKeyword.substring(escapedKeyword.length / 2)}\\b`,
+        "i"
+      ),
+      // Match with zero-width spaces or hidden characters
+      hidden: new RegExp(
+        `\\b${escapedKeyword
+          .split("")
+          .join("[\\s\\u200B\\u200C\\u200D\\uFEFF]*")}\\b`,
+        "i"
+      ),
     };
   } catch (e) {
     debugLog(`Error creating regex for "${keyword}":`, e);
