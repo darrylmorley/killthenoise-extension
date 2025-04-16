@@ -16,7 +16,7 @@ KillTheNoise is a powerful Chrome extension that filters out rage-bait, clickbai
 - **Customizable Keywords**: Add your own keywords to personalize your filtering experience
 - **Filter Counter**: Tracks the number of videos that have been filtered out
 - **Smart Word Matching**: Detects keywords even when they appear in different forms (possessives, plurals, etc.)
-- **Performance Optimized**: Designed to run efficiently without slowing down your browsing experience
+- **Performance Optimized**: Built with Web Workers to keep your browser smooth and snappy
 
 ## Installation
 
