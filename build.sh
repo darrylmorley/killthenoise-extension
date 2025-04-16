@@ -16,6 +16,7 @@ EXCLUDES=(
   "killthenoise.zip"
   "icon2.png"
   ".DS_Store"
+  ".gitignore"
 )
 
 # Create the exclude args for zip
