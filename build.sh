@@ -17,6 +17,7 @@ EXCLUDES=(
   "icon2.png"
   ".DS_Store"
   ".gitignore"
+  "privacy.md"
 )
 
 # Create the exclude args for zip
