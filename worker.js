@@ -23,10 +23,42 @@ function createKeywordRegexes(keyword) {
   try {
     const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return {
+      // Standard word boundary match
       word: new RegExp(`\\b${escapedKeyword}\\b`, "i"),
+      // Possessive form
       possessiveS: new RegExp(`\\b${escapedKeyword}'s\\b`, "i"),
+      // Plural form
       plural: new RegExp(`\\b${escapedKeyword}s\\b`, "i"),
+      // Possessive form without 's
       possessive: new RegExp(`\\b${escapedKeyword}'\\b`, "i"),
+      // Relaxed match for any occurrence (without word boundaries)
+      anywhere: new RegExp(escapedKeyword, "i"),
+      // Match with characters on either side to catch formatting issues
+      relaxed: new RegExp(`[\\s,.;:"'\\-]${escapedKeyword}[\\s,.;:"'\\-]`, "i"),
+      // Enhanced political name matching (for cases like T.rump, T-rump, T r u m p, etc.)
+      enhanced: new RegExp(
+        `\\b${escapedKeyword.charAt(0)}[.\\s\\-_]*${escapedKeyword.substring(
+          1
+        )}\\b`,
+        "i"
+      ),
+      // Match inside HTML tags that might be rendered
+      htmlEmbedded: new RegExp(`>([^<]*?)${escapedKeyword}([^<]*?)<`, "i"),
+      // Special obfuscated version for catching deliberate misspellings (like Tr*mp, Tr_mp, etc)
+      obfuscated: new RegExp(
+        `\\b${escapedKeyword.charAt(0)}[^\\s]{0,1}${escapedKeyword.substring(
+          1,
+          escapedKeyword.length / 2
+        )}[^\\s]{0,1}${escapedKeyword.substring(escapedKeyword.length / 2)}\\b`,
+        "i"
+      ),
+      // Match with zero-width spaces or hidden characters
+      hidden: new RegExp(
+        `\\b${escapedKeyword
+          .split("")
+          .join("[\\s\\u200B\\u200C\\u200D\\uFEFF]*")}\\b`,
+        "i"
+      ),
     };
   } catch (e) {
     debugLog(`Error creating regex for "${keyword}":`, e);
@@ -155,18 +187,19 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
     // If not filtered by hashtag, badge, or channel name, check title and description keywords
     if (!result.filtered) {
       const lowerTitle = titleText.toLowerCase();
+      const lowerDesc = descriptionText ? descriptionText.toLowerCase() : "";
 
       for (const keyword of blockKeywords) {
         const lowerKeyword = keyword.toLowerCase().trim();
         let matched = false;
         let matchType = "";
 
-        // For single words, use cached regex patterns for word boundary matching
+        // For single words, use cached regex patterns
         if (lowerKeyword.indexOf(" ") === -1) {
           const regexes = getKeywordRegexes(lowerKeyword);
 
           if (regexes) {
-            // Check title with regexes
+            // First try strict word boundary matches in title
             if (
               regexes.word.test(lowerTitle) ||
               regexes.possessiveS.test(lowerTitle) ||
@@ -176,26 +209,72 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
               matched = true;
               matchType = "title word match";
             }
+            // Then try relaxed matches in title
+            else if (
+              regexes.relaxed.test(lowerTitle) ||
+              regexes.anywhere.test(lowerTitle)
+            ) {
+              matched = true;
+              matchType = "title relaxed match";
+            }
             // Check description with regexes if available
             else if (
-              descriptionText &&
-              (regexes.word.test(descriptionText) ||
-                regexes.possessiveS.test(descriptionText) ||
-                regexes.plural.test(descriptionText) ||
-                regexes.possessive.test(descriptionText))
+              lowerDesc &&
+              (regexes.word.test(lowerDesc) ||
+                regexes.possessiveS.test(lowerDesc) ||
+                regexes.plural.test(lowerDesc) ||
+                regexes.possessive.test(lowerDesc))
             ) {
               matched = true;
               matchType = "description word match";
+            }
+            // Try relaxed description matches
+            else if (
+              lowerDesc &&
+              (regexes.relaxed.test(lowerDesc) ||
+                regexes.anywhere.test(lowerDesc))
+            ) {
+              matched = true;
+              matchType = "description relaxed match";
+            }
+            // Check enhanced political name matching
+            else if (
+              regexes.enhanced.test(lowerTitle) ||
+              (lowerDesc && regexes.enhanced.test(lowerDesc))
+            ) {
+              matched = true;
+              matchType = "enhanced political name match";
+            }
+            // Check HTML embedded matches
+            else if (
+              regexes.htmlEmbedded.test(lowerTitle) ||
+              (lowerDesc && regexes.htmlEmbedded.test(lowerDesc))
+            ) {
+              matched = true;
+              matchType = "HTML embedded match";
+            }
+            // Check obfuscated matches
+            else if (
+              regexes.obfuscated.test(lowerTitle) ||
+              (lowerDesc && regexes.obfuscated.test(lowerDesc))
+            ) {
+              matched = true;
+              matchType = "obfuscated match";
+            }
+            // Check hidden matches
+            else if (
+              regexes.hidden.test(lowerTitle) ||
+              (lowerDesc && regexes.hidden.test(lowerDesc))
+            ) {
+              matched = true;
+              matchType = "hidden match";
             }
           } else {
             // Fall back to simple inclusion if regex creation failed
             if (lowerTitle.includes(lowerKeyword)) {
               matched = true;
               matchType = "title simple match";
-            } else if (
-              descriptionText &&
-              descriptionText.includes(lowerKeyword)
-            ) {
+            } else if (lowerDesc && lowerDesc.includes(lowerKeyword)) {
               matched = true;
               matchType = "description simple match";
             }
@@ -206,10 +285,7 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
           if (lowerTitle.includes(lowerKeyword)) {
             matched = true;
             matchType = "title phrase match";
-          } else if (
-            descriptionText &&
-            descriptionText.includes(lowerKeyword)
-          ) {
+          } else if (lowerDesc && lowerDesc.includes(lowerKeyword)) {
             matched = true;
             matchType = "description phrase match";
           }
