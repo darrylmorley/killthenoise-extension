@@ -4,18 +4,29 @@
 let processedVideos = new Set();
 let localRemovedCount = 0;
 let regexCache = new Map();
+let debugMode = false;
 
-// Debug helper
+// Debug helper - always sends back debug info during troubleshooting
 function debugLog(...args) {
+  // Create message string
+  const message = args
+    .map((arg) => {
+      if (typeof arg === "object") {
+        try {
+          return JSON.stringify(arg);
+        } catch (e) {
+          return "[Object]";
+        }
+      }
+      return String(arg);
+    })
+    .join(" ");
+
   // Send debug message back to main thread
-  if (self.debugMode) {
-    self.postMessage({
-      type: "debug",
-      data: {
-        message: args.join(" "),
-      },
-    });
-  }
+  self.postMessage({
+    type: "debug",
+    data: { message },
+  });
 }
 
 // Helper to create regex patterns for a keyword
@@ -61,7 +72,7 @@ function createKeywordRegexes(keyword) {
       ),
     };
   } catch (e) {
-    debugLog(`Error creating regex for "${keyword}":`, e);
+    debugLog(`Error creating regex for "${keyword}":`, e.toString());
     return null;
   }
 }
@@ -77,8 +88,30 @@ function getKeywordRegexes(keyword) {
 
 // Process a batch of videos against keywords and hashtags
 function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
+  debugLog(`Starting to process ${videos.length} videos in worker`);
+
+  if (blockKeywords.length > 0) {
+    debugLog(
+      `Using keywords: ${blockKeywords.slice(0, 5).join(", ")}${
+        blockKeywords.length > 5 ? "..." : ""
+      }`
+    );
+  }
+
+  if (blockHashtags && blockHashtags.length > 0) {
+    debugLog(`Using hashtags: ${blockHashtags.join(", ")}`);
+  }
+
   const results = [];
   let removedThisRun = 0;
+
+  // Debug: log first video for verification
+  if (videos.length > 0) {
+    const firstVideo = videos[0];
+    debugLog(
+      `First video in batch: "${firstVideo.titleText}" (ID: ${firstVideo.videoId})`
+    );
+  }
 
   for (const video of videos) {
     const {
@@ -90,8 +123,16 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
       channelName = "",
     } = video;
 
+    // Skip invalid videos
+    if (!videoId || !titleText) {
+      debugLog(`Skipping invalid video: missing ID or title`);
+      continue;
+    }
+
     // Skip if we've already processed this video
-    if (processedVideos.has(videoId)) continue;
+    if (processedVideos.has(videoId)) {
+      continue;
+    }
 
     // Mark as processed
     processedVideos.add(videoId);
@@ -132,6 +173,9 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
           result.matchType = "hashtag match";
           localRemovedCount++;
           removedThisRun++;
+          debugLog(
+            `Filtered video by hashtag: "${titleText}" (hashtag match: ${blockHashtag})`
+          );
           break;
         }
       }
@@ -154,6 +198,9 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
             result.matchType = "badge match";
             localRemovedCount++;
             removedThisRun++;
+            debugLog(
+              `Filtered video by badge: "${titleText}" (badge match: ${keyword})`
+            );
             break;
           }
         }
@@ -179,6 +226,9 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
           result.matchType = "channel match";
           localRemovedCount++;
           removedThisRun++;
+          debugLog(
+            `Filtered video by channel: "${titleText}" (channel match: ${keyword})`
+          );
           break;
         }
       }
@@ -297,12 +347,32 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
           result.matchType = matchType;
           localRemovedCount++;
           removedThisRun++;
+          debugLog(`Filtered video: "${titleText}" (${matchType}: ${keyword})`);
           break;
         }
       }
     }
 
     results.push(result);
+  }
+
+  debugLog(
+    `Worker processed ${videos.length} videos, filtered ${removedThisRun} videos`
+  );
+
+  // Additional debugging for when no videos are filtered
+  if (removedThisRun === 0 && videos.length > 0) {
+    debugLog("No videos filtered in this batch. First few titles:");
+    videos.slice(0, 3).forEach((video, i) => {
+      debugLog(`- Video ${i + 1}: "${video.titleText}"`);
+    });
+
+    if (blockKeywords.length > 0) {
+      debugLog("First few keywords:");
+      blockKeywords.slice(0, 5).forEach((keyword, i) => {
+        debugLog(`- Keyword ${i + 1}: "${keyword}"`);
+      });
+    }
   }
 
   return {
@@ -327,46 +397,138 @@ function cleanupProcessedVideos() {
 }
 
 // Set up regular cleanup
-setInterval(cleanupProcessedVideos, 60000); // Every minute
+const cleanupInterval = setInterval(cleanupProcessedVideos, 60000); // Every minute
 
 // Listen for messages from the main thread
 self.addEventListener("message", function (e) {
-  const { type, data } = e.data;
+  try {
+    const { type, data } = e.data;
 
-  switch (type) {
-    case "init":
-      // Initialize worker with settings
-      self.debugMode = data.debugMode === true;
-      debugLog("Worker initialized with debug mode:", self.debugMode);
-      break;
+    debugLog(`Worker received message type: ${type}`);
 
-    case "processVideos":
-      // Process video batch
-      const { videos, keywords, hashtags } = data;
-      debugLog(
-        `Processing ${videos.length} videos against ${keywords.length} keywords and ${hashtags.length} hashtags`
-      );
-      const result = processVideoBatch(videos, keywords, hashtags);
-      self.postMessage({
-        type: "processingComplete",
-        data: result,
-      });
-      break;
+    switch (type) {
+      case "init":
+        // Initialize worker with settings
+        debugMode = data.debugMode === true;
+        debugLog("Worker initialized with debug mode:", debugMode);
+        break;
 
-    case "resetProcessedVideos":
-      // Reset processed videos
-      processedVideos.clear();
-      localRemovedCount = 0;
-      debugLog("Processed videos reset");
-      self.postMessage({
-        type: "resetComplete",
-      });
-      break;
+      case "processVideos":
+        // Process video batch
+        if (!data) {
+          debugLog("ERROR: Received processVideos message without data");
+          break;
+        }
 
-    case "updateDebugMode":
-      // Update debug mode
-      self.debugMode = data.debugMode === true;
-      debugLog("Debug mode updated:", self.debugMode);
-      break;
+        const { videos, keywords, hashtags } = data;
+
+        if (!videos || !Array.isArray(videos)) {
+          debugLog("ERROR: videos is not an array or is missing");
+          break;
+        }
+
+        if (!keywords || !Array.isArray(keywords)) {
+          debugLog("ERROR: keywords is not an array or is missing");
+          break;
+        }
+
+        try {
+          debugLog(
+            `Processing ${videos.length} videos against ${
+              keywords.length
+            } keywords and ${hashtags?.length || 0} hashtags`
+          );
+
+          const result = processVideoBatch(videos, keywords, hashtags || []);
+
+          debugLog(
+            `Sending processing results back to main thread: ${result.removedCount} videos filtered`
+          );
+
+          self.postMessage({
+            type: "processingComplete",
+            data: result,
+          });
+        } catch (processingError) {
+          debugLog(
+            "ERROR processing videos in worker:",
+            processingError.toString()
+          );
+          // Send empty result to avoid breaking the main thread
+          self.postMessage({
+            type: "processingComplete",
+            data: {
+              results: [],
+              removedCount: 0,
+              totalRemoved: localRemovedCount,
+              error: processingError.toString(),
+            },
+          });
+        }
+        break;
+
+      case "resetProcessedVideos":
+        // Reset processed videos
+        processedVideos.clear();
+        localRemovedCount = 0;
+        debugLog("Processed videos reset");
+        self.postMessage({
+          type: "resetComplete",
+        });
+        break;
+
+      case "updateDebugMode":
+        // Update debug mode
+        debugMode = data.debugMode === true;
+        debugLog("Debug mode updated:", debugMode);
+        break;
+
+      default:
+        debugLog(`Unknown message type received: ${type}`);
+        break;
+    }
+  } catch (error) {
+    debugLog("ERROR in worker message handler:", error.toString());
+    // Send error report to main thread
+    self.postMessage({
+      type: "debug",
+      data: {
+        message: `ERROR in worker: ${error.toString()}`,
+      },
+    });
   }
+});
+
+// Self-test to ensure worker is functioning
+setTimeout(() => {
+  debugLog("Worker self-test: Processing test video");
+
+  const testVideo = {
+    videoId: "test-id-123",
+    titleText: "Test Video with EXPOSED scandal disaster",
+    descriptionText: "This is a test description",
+    hashtags: ["#test"],
+    badges: [],
+    channelName: "Test Channel",
+  };
+
+  const testKeywords = ["exposed", "disaster", "scandal"];
+
+  const result = processVideoBatch([testVideo], testKeywords, []);
+
+  if (result.removedCount > 0) {
+    debugLog("Worker self-test: Successfully filtered test video");
+  } else {
+    debugLog(
+      "Worker self-test: Failed to filter test video that should match keywords"
+    );
+  }
+}, 100);
+
+// Send initial ready message
+self.postMessage({
+  type: "debug",
+  data: {
+    message: "Worker initialized and ready to process videos",
+  },
 });

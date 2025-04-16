@@ -78,23 +78,10 @@ function debugLog(...args) {
 }
 
 // Handle navigation preload - this addresses the warning about preloadResponse
-self.addEventListener("fetch", (event) => {
-  // This empty handler prevents the warning by ensuring the service worker
-  // properly acknowledges the fetch event without interfering with it
-  if (event.preloadResponse) {
-    // We're not actually using preloadResponse for this extension,
-    // but we need to acknowledge it to prevent the warning
-    event.waitUntil(
-      (async function () {
-        try {
-          // Wait for preloadResponse to settle if it exists
-          const preloadResponse = await event.preloadResponse;
-          // We don't need to do anything with it
-        } catch (error) {
-          // Ignore any errors
-        }
-      })()
-    );
+self.addEventListener("activate", (event) => {
+  // Disable navigation preload if it's supported
+  if (self.registration.navigationPreload) {
+    event.waitUntil(self.registration.navigationPreload.disable());
   }
 });
 

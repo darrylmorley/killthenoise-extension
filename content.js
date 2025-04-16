@@ -311,6 +311,8 @@ function cleanupMainThreadCache() {
   }
 }
 
+// === WORKER INITIALIZATION ===
+
 // Create and initialize the web worker
 let filterWorker = null;
 let isWorkerReady = false;
@@ -318,24 +320,38 @@ let isWorkerReady = false;
 // Function to initialize the worker
 function initWorker() {
   try {
-    // Get the worker script URL - this returns a string, not a Promise
+    debugLog("Initializing web worker...");
+
+    // Get the worker script URL
     const workerURL = chrome.runtime.getURL("worker.js");
+    debugLog("Worker URL:", workerURL);
 
     // Fetch the worker code
     fetch(workerURL)
-      .then((response) => response.text())
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch worker script: ${response.status} ${response.statusText}`
+          );
+        }
+        debugLog("Worker script fetched successfully");
+        return response.text();
+      })
       .then((workerCode) => {
         // Create a blob URL for the worker
         const blob = new Blob([workerCode], { type: "text/javascript" });
         const blobURL = URL.createObjectURL(blob);
+        debugLog("Blob URL created");
 
         // Create new worker using the blob URL
         filterWorker = new Worker(blobURL);
+        debugLog("Worker instance created");
 
         // Setup message handler
         filterWorker.onmessage = function (e) {
           try {
             const { type, data } = e.data;
+            debugLog("Received message from worker:", type);
 
             switch (type) {
               case "debug":
@@ -353,6 +369,7 @@ function initWorker() {
 
               case "processingComplete":
                 // Process the results from the worker
+                debugLog("Processing complete message received from worker");
                 if (data) {
                   handleWorkerResults(data);
                 } else {
@@ -374,7 +391,17 @@ function initWorker() {
               error,
               e.data
             );
+            debugLog("Error in worker message handler:", error.toString());
+            // Set worker as failed so we fallback to main thread
+            isWorkerReady = false;
           }
+        };
+
+        // Setup error handler
+        filterWorker.onerror = function (error) {
+          console.error("[KillTheNoise] Worker error:", error);
+          debugLog("Worker error occurred:", error.message);
+          isWorkerReady = false;
         };
 
         // Initialize worker with current settings
@@ -386,14 +413,12 @@ function initWorker() {
             },
           });
           isWorkerReady = true;
-          debugLog("Web worker initialized");
+          debugLog("Web worker initialized with settings");
         });
-
-        // Clean up the blob URL when we're done with it
-        // URL.revokeObjectURL(blobURL); // Don't revoke while worker is active
       })
       .catch((error) => {
         console.error("Error initializing worker:", error);
+        debugLog("Error initializing worker:", error.toString());
         // Fallback to main thread processing in case of error
         isWorkerReady = false;
         debugLog(
@@ -402,6 +427,7 @@ function initWorker() {
       });
   } catch (error) {
     console.error("Web worker creation failed:", error);
+    debugLog("Web worker creation failed:", error.toString());
     isWorkerReady = false;
     debugLog("Web worker creation failed, using main thread fallback");
   }
@@ -409,7 +435,23 @@ function initWorker() {
 
 // Handle filtered results from worker
 function handleWorkerResults(data) {
+  if (!data) {
+    debugLog("Error: No data received from worker");
+    return;
+  }
+
   const { results, removedCount } = data;
+
+  if (!results || !Array.isArray(results)) {
+    debugLog("Error: No valid results array received from worker");
+    return;
+  }
+
+  debugLog(
+    `Received ${results.length} results from worker, with ${removedCount} filtered videos`
+  );
+
+  let appliedFilterCount = 0;
 
   // Apply filtering to DOM elements
   results.forEach((result) => {
@@ -424,13 +466,23 @@ function handleWorkerResults(data) {
         debugLog(
           `Filtered video with ID ${videoId} (${result.matchType}: ${result.keyword})`
         );
+        appliedFilterCount++;
+      } else {
+        debugLog(
+          `Could not find DOM element for filtered video ID: ${videoId}`
+        );
       }
     }
   });
 
+  debugLog(
+    `Applied filtering to ${appliedFilterCount} DOM elements out of ${removedCount} filtered videos`
+  );
+
   // Update count if any videos were removed
   if (removedCount > 0) {
     updateFilteredCount(removedCount);
+    debugLog(`Updated filtered count by ${removedCount}`);
   }
 }
 
@@ -469,6 +521,8 @@ function getVideoId(el) {
   return titleEl ? `title:${titleEl.textContent.trim()}` : `el:${Date.now()}`;
 }
 
+// === PARSING VIDEO DATA ===
+
 // Parse title and description from an element
 function parseVideoData(el) {
   // Get title text
@@ -476,9 +530,16 @@ function parseVideoData(el) {
     el.querySelector("#video-title") ||
     el.querySelector("h3 yt-formatted-string#video-title") ||
     el.querySelector("h3");
-  if (!titleEl) return null;
+
+  if (!titleEl) {
+    debugLog("Could not find title element for video");
+    return null;
+  }
 
   const titleText = titleEl.textContent.trim();
+  if (!titleText) {
+    debugLog("Empty title text found for video");
+  }
 
   // Get description text if available
   const descriptionEl = el.querySelector(
@@ -556,6 +617,11 @@ function parseVideoData(el) {
     if (match) videoId = match[1];
   }
 
+  // If we still don't have a videoId, generate one from the title
+  if (!videoId && titleText) {
+    videoId = `title:${titleText.substring(0, 30)}`;
+  }
+
   // Look for badges like "New" or "Live"
   const badges = [];
   const badgeElements = el.querySelectorAll(
@@ -580,10 +646,12 @@ function parseVideoData(el) {
   };
 }
 
+// === CLEANING YOUTUBE FEED ===
+
 function cleanYouTubeFeed(blockKeywords, blockHashtags) {
   // Check if worker failed to initialize and we need to use fallback
-  if (!filterWorker) {
-    debugLog("Web worker unavailable, using main thread fallback");
+  if (!filterWorker || !isWorkerReady) {
+    debugLog("Web worker unavailable or not ready, using main thread fallback");
     isWorkerReady = false;
   }
 
@@ -631,10 +699,23 @@ function cleanYouTubeFeed(blockKeywords, blockHashtags) {
     if (videoBatch.length > 0) {
       if (filterWorker && isWorkerReady) {
         // Worker mode: Send to web worker
+        debugLog(
+          `Sending batch of ${videoBatch.length} videos to worker for processing`
+        );
+
+        // Create a deep copy of the video data without DOM references
+        const workerVideos = videoBatch.map(({ element, ...video }) => {
+          // Ensure the videoId is included from both sources
+          return {
+            ...video,
+            videoId: video.videoId || getVideoId(element),
+          };
+        });
+
         filterWorker.postMessage({
           type: "processVideos",
           data: {
-            videos: videoBatch.map(({ element, ...video }) => video), // Remove element reference for worker
+            videos: workerVideos,
             keywords: blockKeywords,
             hashtags: blockHashtags,
           },
