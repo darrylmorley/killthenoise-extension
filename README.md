@@ -61,7 +61,7 @@ The extension comes with a set of default keywords designed to target common cli
 - collapse
 - shocking
 - gone wrong  
-  _See the full list in the extension settings or [defaultKeywords.js](./defaultKeywords.txt)._
+  _See the full list in the extension settings or [defaultKeywords.txt](./defaultKeywords.txt)._
 
 ## Performance
 
