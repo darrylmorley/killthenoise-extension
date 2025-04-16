@@ -49,7 +49,14 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
   let removedThisRun = 0;
 
   for (const video of videos) {
-    const { videoId, titleText, descriptionText, hashtags = [] } = video;
+    const {
+      videoId,
+      titleText,
+      descriptionText,
+      hashtags = [],
+      badges = [],
+      channelName = "",
+    } = video;
 
     // Skip if we've already processed this video
     if (processedVideos.has(videoId)) continue;
@@ -64,9 +71,6 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
       keyword: null,
       matchType: null,
     };
-
-    // Check video against keywords
-    const lowerTitle = titleText.toLowerCase();
 
     // First check hashtags if enabled
     if (
@@ -101,8 +105,57 @@ function processVideoBatch(videos, blockKeywords, blockHashtags = []) {
       }
     }
 
-    // If not filtered by hashtag, check keywords
+    // Check if any badges match blocked keywords
+    if (!result.filtered && badges && badges.length > 0) {
+      for (const badge of badges) {
+        const lowerBadge = badge.toLowerCase().trim();
+
+        for (const keyword of blockKeywords) {
+          const lowerKeyword = keyword.toLowerCase().trim();
+
+          if (
+            lowerBadge === lowerKeyword ||
+            lowerBadge.includes(lowerKeyword)
+          ) {
+            result.filtered = true;
+            result.keyword = keyword;
+            result.matchType = "badge match";
+            localRemovedCount++;
+            removedThisRun++;
+            break;
+          }
+        }
+
+        if (result.filtered) break;
+      }
+    }
+
+    // Check if channel name matches blocked keywords
+    if (!result.filtered && channelName) {
+      const lowerChannelName = channelName.toLowerCase();
+
+      for (const keyword of blockKeywords) {
+        const lowerKeyword = keyword.toLowerCase().trim();
+
+        // For channel names, we'll use simple inclusion rather than word boundary checks
+        if (
+          lowerChannelName === lowerKeyword ||
+          lowerChannelName.includes(lowerKeyword)
+        ) {
+          result.filtered = true;
+          result.keyword = keyword;
+          result.matchType = "channel match";
+          localRemovedCount++;
+          removedThisRun++;
+          break;
+        }
+      }
+    }
+
+    // If not filtered by hashtag, badge, or channel name, check title and description keywords
     if (!result.filtered) {
+      const lowerTitle = titleText.toLowerCase();
+
       for (const keyword of blockKeywords) {
         const lowerKeyword = keyword.toLowerCase().trim();
         let matched = false;

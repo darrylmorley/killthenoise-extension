@@ -108,7 +108,14 @@ function getKeywordRegexesMainThread(keyword) {
 
 // Process a single video against keywords and hashtags in main thread (fallback)
 function processVideoMainThread(video, blockKeywords, blockHashtags = []) {
-  const { videoId, titleText, descriptionText, hashtags = [] } = video;
+  const {
+    videoId,
+    titleText,
+    descriptionText,
+    hashtags = [],
+    badges = [],
+    channelName = "",
+  } = video;
 
   // Skip if we've already processed this video
   if (processedVideosMainThread.has(videoId)) return false;
@@ -151,7 +158,53 @@ function processVideoMainThread(video, blockKeywords, blockHashtags = []) {
     }
   }
 
-  // Check video against keywords
+  // Check if any badges match blocked keywords
+  if (badges && badges.length > 0) {
+    for (const badge of badges) {
+      const lowerBadge = badge.toLowerCase().trim();
+
+      for (const keyword of blockKeywords) {
+        const lowerKeyword = keyword.toLowerCase().trim();
+
+        if (lowerBadge === lowerKeyword || lowerBadge.includes(lowerKeyword)) {
+          debugLog(
+            `Filtered video by badge: "${titleText}" (badge match: ${keyword})`
+          );
+          return {
+            filtered: true,
+            keyword,
+            matchType: "badge match",
+          };
+        }
+      }
+    }
+  }
+
+  // Check if channel name matches blocked keywords
+  if (channelName) {
+    const lowerChannelName = channelName.toLowerCase();
+
+    for (const keyword of blockKeywords) {
+      const lowerKeyword = keyword.toLowerCase().trim();
+
+      // For channel names, we'll use simple inclusion rather than word boundary checks
+      if (
+        lowerChannelName === lowerKeyword ||
+        lowerChannelName.includes(lowerKeyword)
+      ) {
+        debugLog(
+          `Filtered video by channel: "${titleText}" (channel match: ${keyword})`
+        );
+        return {
+          filtered: true,
+          keyword,
+          matchType: "channel match",
+        };
+      }
+    }
+  }
+
+  // Check video against keywords in title and description
   const lowerTitle = titleText.toLowerCase();
 
   for (const keyword of blockKeywords) {
