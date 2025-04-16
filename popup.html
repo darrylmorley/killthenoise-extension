@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>KillTheNoise</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: sans-serif;
+        background: #f9f9f9;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .container {
+        width: 250px;
+        background: #ffffff;
+        padding: 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        text-align: center;
+      }
+
+      h1 {
+        font-size: 1.3rem;
+        margin: 0 0 0.5rem;
+      }
+
+      p {
+        margin-top: 0;
+        font-size: 0.95rem;
+        color: #444;
+      }
+
+      .switch {
+        margin-top: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.95rem;
+      }
+
+      input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+      }
+
+      a {
+        display: block;
+        margin-top: 1rem;
+        padding: 0.5rem;
+        border-radius: 4px;
+        background-color: #007bff;
+        color: white;
+        text-decoration: none;
+        font-size: 1rem;
+      }
+
+      a:hover {
+        background-color: #0056b3;
+      }
+
+      .counter {
+        font-size: 0.9rem;
+        margin-top: 1rem;
+        font-weight: bold;
+        color: #222;
+      }
+
+      .note {
+        font-size: 0.8rem;
+        color: #666;
+        margin-top: 0.75rem;
+      }
+
+      .reset-btn {
+        margin-top: 0.75rem;
+        background: none;
+        border: none;
+        color: #666;
+        text-decoration: underline;
+        cursor: pointer;
+        font-size: 0.8rem;
+      }
+
+      .reset-btn:hover {
+        color: #333;
+      }
+
+      .debug {
+        margin-top: 0.5rem;
+        border-top: 1px dashed #ccc;
+        padding-top: 0.5rem;
+        font-size: 0.7rem;
+        color: #999;
+        text-align: left;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>KillTheNoise</h1>
+      <p>Enjoy a calmer YouTube feed.</p>
+      <div class="switch">
+        <label for="enabledToggle">Filter Enabled</label>
+        <input type="checkbox" id="enabledToggle" />
+      </div>
+      <a href="options.html" target="_blank">Edit Blocked Keywords</a>
+      <div class="counter">Videos filtered: <span id="count">0</span></div>
+      <button id="resetCounter" class="reset-btn">Reset counter</button>
+      <div class="note">Filtering titles with rage-bait terms.</div>
+
+      <!-- Debug info section -->
+      <div class="debug" id="debugInfo"></div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
