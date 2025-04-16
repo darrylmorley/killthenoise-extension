@@ -33,5 +33,15 @@
   },
   "icons": {
     "48": "icon.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "worker.js"
+      ],
+      "matches": [
+        "*://www.youtube.com/*"
+      ]
+    }
+  ]
 }

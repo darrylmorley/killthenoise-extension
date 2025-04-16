@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>KillTheNoise – Keyword Settings</title>
+    <title>KillTheNoise – Extension Settings</title>
     <style>
       body {
         font-family: sans-serif;
@@ -27,6 +27,16 @@
         margin-top: 0;
       }
 
+      h2 {
+        margin-top: 1.5em;
+        margin-bottom: 0.5em;
+        font-size: 1.2em;
+      }
+
+      .settings-section {
+        margin-bottom: 2em;
+      }
+
       label {
         font-weight: bold;
         display: block;
@@ -44,6 +54,10 @@
         resize: vertical;
       }
 
+      textarea.small {
+        height: 100px;
+      }
+
       button {
         display: block;
         width: 100%;
@@ -54,6 +68,7 @@
         border: none;
         border-radius: 4px;
         cursor: pointer;
+        margin-bottom: 1em;
       }
 
       button:hover {
@@ -65,6 +80,12 @@
         font-size: 0.95em;
         color: green;
         text-align: center;
+      }
+
+      .tip {
+        font-size: 0.85em;
+        color: #666;
+        margin-top: 0.25em;
       }
 
       .advanced-settings {
@@ -105,14 +126,33 @@
   </head>
   <body>
     <div class="container">
-      <h1>Blocked Keywords</h1>
-      <p>
-        Enter one keyword per line. Videos with these words in the title will be
-        hidden.
-      </p>
-      <label for="keywords">Keyword List</label>
-      <textarea id="keywords"></textarea>
-      <button id="save">Save</button>
+      <h1>KillTheNoise Settings</h1>
+
+      <div class="settings-section">
+        <h2>Blocked Keywords</h2>
+        <p>
+          Enter one keyword per line. Videos with these words in the title or
+          description will be hidden.
+        </p>
+        <label for="keywords">Keyword List</label>
+        <textarea id="keywords"></textarea>
+        <p class="tip">Examples: "shocking", "gone wrong", "disaster", etc.</p>
+      </div>
+
+      <div class="settings-section">
+        <h2>Blocked Hashtags</h2>
+        <p>
+          Enter one hashtag per line. Videos with these hashtags will be hidden.
+        </p>
+        <label for="hashtags">Hashtag List</label>
+        <textarea id="hashtags" class="small"></textarea>
+        <p class="tip">
+          Examples: "#shorts", "#drama", "#exposed", etc. The # symbol is
+          optional.
+        </p>
+      </div>
+
+      <button id="save">Save All Settings</button>
       <div id="status"></div>
 
       <!-- Advanced Settings Section -->

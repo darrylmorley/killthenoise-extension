@@ -53,12 +53,50 @@ const DEFAULT_KEYWORDS = [
 
 // Debug helper
 function debugLog(...args) {
-  chrome.storage.sync.get(["debugMode"], (result) => {
-    if (result.debugMode === true) {
-      console.log("[KillTheNoise Background]", ...args);
-    }
-  });
+  try {
+    chrome.storage.sync.get(["debugMode"], (result) => {
+      if (chrome.runtime.lastError) {
+        // Extension context may be invalidated, log to console directly
+        console.log(
+          "[KillTheNoise Background] Extension context error:",
+          chrome.runtime.lastError
+        );
+        return;
+      }
+
+      if (result.debugMode === true) {
+        console.log("[KillTheNoise Background]", ...args);
+      }
+    });
+  } catch (error) {
+    // If chrome.storage is not available, extension might be reloading
+    console.log(
+      "[KillTheNoise Background] Error accessing chrome APIs:",
+      error
+    );
+  }
 }
+
+// Handle navigation preload - this addresses the warning about preloadResponse
+self.addEventListener("fetch", (event) => {
+  // This empty handler prevents the warning by ensuring the service worker
+  // properly acknowledges the fetch event without interfering with it
+  if (event.preloadResponse) {
+    // We're not actually using preloadResponse for this extension,
+    // but we need to acknowledge it to prevent the warning
+    event.waitUntil(
+      (async function () {
+        try {
+          // Wait for preloadResponse to settle if it exists
+          const preloadResponse = await event.preloadResponse;
+          // We don't need to do anything with it
+        } catch (error) {
+          // Ignore any errors
+        }
+      })()
+    );
+  }
+});
 
 // Initialize settings on install or update
 chrome.runtime.onInstalled.addListener((details) => {
@@ -76,6 +114,11 @@ chrome.runtime.onInstalled.addListener((details) => {
       result.blockKeywords.length === 0
     ) {
       toSet.blockKeywords = DEFAULT_KEYWORDS;
+    }
+
+    // Initialize blockHashtags if undefined
+    if (!Array.isArray(result.blockHashtags)) {
+      toSet.blockHashtags = [];
     }
 
     // Set filterEnabled to true by default if undefined

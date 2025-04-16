@@ -1,5 +1,6 @@
 // Regular settings elements
-const textarea = document.getElementById("keywords");
+const keywordsTextarea = document.getElementById("keywords");
+const hashtagsTextarea = document.getElementById("hashtags");
 const saveButton = document.getElementById("save");
 const statusElement = document.getElementById("status");
 
@@ -7,29 +8,55 @@ const statusElement = document.getElementById("status");
 const debugToggle = document.getElementById("debugToggle");
 
 // Load existing settings
-chrome.storage.sync.get(["blockKeywords", "debugMode"], (result) => {
-  // Load keywords into textarea
-  if (result.blockKeywords) {
-    textarea.value = result.blockKeywords.join("\n");
+chrome.storage.sync.get(
+  ["blockKeywords", "blockHashtags", "debugMode"],
+  (result) => {
+    // Load keywords into textarea
+    if (result.blockKeywords) {
+      keywordsTextarea.value = result.blockKeywords.join("\n");
+    }
+
+    // Load hashtags into textarea
+    if (result.blockHashtags) {
+      hashtagsTextarea.value = result.blockHashtags.join("\n");
+    }
+
+    // Set debug toggle state
+    debugToggle.checked = result.debugMode === true;
   }
+);
 
-  // Set debug toggle state
-  debugToggle.checked = result.debugMode === true;
-});
-
-// Save keywords
+// Save settings
 saveButton.addEventListener("click", () => {
-  const keywords = textarea.value
+  // Process keywords
+  const keywords = keywordsTextarea.value
     .split("\n")
-    .map((k) => k.trim().toLowerCase())
+    .map((k) => k.trim())
     .filter((k) => k);
 
-  chrome.storage.sync.set({ blockKeywords: keywords }, () => {
-    statusElement.textContent = "Saved!";
-    setTimeout(() => {
-      statusElement.textContent = "";
-    }, 2000);
-  });
+  // Process hashtags (normalize to include # if needed)
+  const hashtags = hashtagsTextarea.value
+    .split("\n")
+    .map((tag) => {
+      const trimmed = tag.trim();
+      if (!trimmed) return "";
+      return trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+    })
+    .filter((tag) => tag);
+
+  // Save both keywords and hashtags
+  chrome.storage.sync.set(
+    {
+      blockKeywords: keywords,
+      blockHashtags: hashtags,
+    },
+    () => {
+      statusElement.textContent = "Settings saved!";
+      setTimeout(() => {
+        statusElement.textContent = "";
+      }, 2000);
+    }
+  );
 });
 
 // Handle debug toggle changes

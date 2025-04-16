@@ -67,11 +67,13 @@ The extension comes with a set of default keywords designed to target common cli
 
 KillTheNoise is designed with performance in mind:
 
-- Uses batched processing to prevent browser slowdowns
-- Employs regex caching to minimize CPU usage
-- Leverages CSS classes instead of inline styles for better performance
-- Implements memory management to keep resource usage low
-- Only processes videos that are visible or about to become visible
+- **Web Worker Architecture**: Uses a dedicated worker thread for all filtering operations, keeping the main UI thread responsive
+- **Batched Processing**: Splits work into small chunks to prevent browser slowdowns
+- **Regex Caching**: Pre-compiles and caches regular expressions to minimize CPU usage
+- **CSS-Based Filtering**: Uses CSS classes instead of inline styles for better performance
+- **Memory Management**: Implements automatic cleanup to keep resource usage low
+- **Visibility-Based Processing**: Only processes videos that are visible or about to become visible
+- **Debounced DOM Observation**: Intelligently monitors for new content without excessive processing
 
 ## Contributing
 

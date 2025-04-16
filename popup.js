@@ -32,68 +32,133 @@ function updateUI() {
 
 // Initialize popup
 document.addEventListener("DOMContentLoaded", () => {
-  // Force refresh settings from storage
-  chrome.storage.sync.get(null, (allData) => {
-    logDebug("All storage data:", allData);
-  });
+  const toggleElement = document.getElementById("enabledToggle");
+  const countElement = document.getElementById("count");
+  const resetButton = document.getElementById("resetCounter");
 
-  // Update UI elements
-  updateUI();
-});
-
-// Add listener for filter toggle changes
-toggle.addEventListener("change", () => {
-  const enabled = toggle.checked;
-  logDebug("Filter toggle changed to:", enabled);
-
-  // Immediately update UI to reflect the change
-  toggle.disabled = true; // Disable during update
-
-  // Make sure we're setting a boolean value
-  chrome.storage.sync.set({ filterEnabled: enabled === true }, () => {
-    toggle.disabled = false; // Re-enable after update
-    logDebug("Storage updated. filterEnabled set to:", enabled);
-
-    // Notify content script to reapply filter immediately
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      if (tabs[0] && tabs[0].url && tabs[0].url.includes("youtube.com")) {
-        logDebug("Sending toggle message to tab:", tabs[0].id);
-
-        chrome.tabs.sendMessage(
-          tabs[0].id,
-          {
-            action: "toggleFilter",
-            enabled: enabled,
-          },
-          (response) => {
-            if (chrome.runtime.lastError) {
-              logDebug("Error sending message:", chrome.runtime.lastError);
-            } else if (response) {
-              logDebug("Response from content script:", response);
-            }
-          }
+  // Load current settings
+  try {
+    chrome.storage.sync.get(["filterEnabled", "filteredCount"], (result) => {
+      if (chrome.runtime.lastError) {
+        console.log(
+          "[KillTheNoise Popup] Error loading settings:",
+          chrome.runtime.lastError
         );
-      } else {
-        logDebug("No YouTube tab found to send message to");
+        return;
       }
+
+      // Set toggle state
+      toggleElement.checked = result.filterEnabled !== false;
+
+      // Set counter value
+      countElement.textContent = result.filteredCount || "0";
     });
+  } catch (error) {
+    console.log("[KillTheNoise Popup] Error accessing chrome APIs:", error);
+  }
+
+  // Handle toggle changes
+  toggleElement.addEventListener("change", () => {
+    const enabled = toggleElement.checked;
+
+    try {
+      // Save setting to storage
+      chrome.storage.sync.set({ filterEnabled: enabled }, () => {
+        if (chrome.runtime.lastError) {
+          console.log(
+            "[KillTheNoise Popup] Error saving settings:",
+            chrome.runtime.lastError
+          );
+          return;
+        }
+
+        // Send message to active tab to enable/disable filter
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (chrome.runtime.lastError) {
+            console.log(
+              "[KillTheNoise Popup] Error querying tabs:",
+              chrome.runtime.lastError
+            );
+            return;
+          }
+
+          if (tabs.length === 0) return;
+
+          try {
+            chrome.tabs.sendMessage(
+              tabs[0].id,
+              { action: "toggleFilter", enabled },
+              (response) => {
+                if (chrome.runtime.lastError) {
+                  console.log(
+                    "[KillTheNoise Popup] Error sending message:",
+                    chrome.runtime.lastError
+                  );
+                }
+              }
+            );
+          } catch (error) {
+            console.log("[KillTheNoise Popup] Error sending message:", error);
+          }
+        });
+      });
+    } catch (error) {
+      console.log("[KillTheNoise Popup] Error setting storage:", error);
+    }
   });
-});
 
-// Add reset counter button handler
-resetBtn.addEventListener("click", () => {
-  logDebug("Reset button clicked");
+  // Handle reset counter button
+  resetButton.addEventListener("click", () => {
+    try {
+      // Reset the counter in storage
+      chrome.storage.sync.set({ filteredCount: 0 }, () => {
+        if (chrome.runtime.lastError) {
+          console.log(
+            "[KillTheNoise Popup] Error resetting counter:",
+            chrome.runtime.lastError
+          );
+          return;
+        }
 
-  chrome.storage.sync.set({ filteredCount: 0 }, () => {
-    countDisplay.textContent = "0";
-    logDebug("Counter reset to 0");
+        // Update UI
+        countElement.textContent = "0";
 
-    // Notify content script to reset its local tracking
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      if (tabs[0] && tabs[0].url && tabs[0].url.includes("youtube.com")) {
-        chrome.tabs.sendMessage(tabs[0].id, { action: "resetCount" });
-      }
-    });
+        // Send message to reset content script counters
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+          if (chrome.runtime.lastError) {
+            console.log(
+              "[KillTheNoise Popup] Error querying tabs:",
+              chrome.runtime.lastError
+            );
+            return;
+          }
+
+          if (tabs.length === 0) return;
+
+          try {
+            chrome.tabs.sendMessage(
+              tabs[0].id,
+              { action: "resetCount" },
+              (response) => {
+                if (chrome.runtime.lastError) {
+                  console.log(
+                    "[KillTheNoise Popup] Error sending reset message:",
+                    chrome.runtime.lastError
+                  );
+                }
+              }
+            );
+          } catch (error) {
+            console.log(
+              "[KillTheNoise Popup] Error sending reset message:",
+              error
+            );
+          }
+        });
+      });
+    } catch (error) {
+      console.log("[KillTheNoise Popup] Error resetting counter:", error);
+    }
   });
 });
 
